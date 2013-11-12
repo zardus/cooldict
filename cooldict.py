@@ -150,7 +150,7 @@ class BranchingDict(collections.MutableMapping):
 		self.cowdict.finalize()
 		return BranchingDict(self.cowdict)
 
-if __name__ == "__main__":
+def test():
 	import standard_logging; standard_logging
 	l.setLevel(logging.DEBUG)
 
@@ -232,3 +232,6 @@ if __name__ == "__main__":
 	b6 = BackedDict({a: 'a'})
 	b6[a] = 'b'
 	assert len(b6) == 1
+
+if __name__ == "__main__":
+	test()
