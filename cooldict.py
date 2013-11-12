@@ -90,7 +90,11 @@ class BackedDict(collections.MutableMapping):
 		return len(list(self.__iter__()))
 
 	def flatten(self):
-		self.storage.update(self)
+		s_keys = set(self.storage.keys())
+		for b in reversed(self.backers):
+			b_keys = set(b.keys())
+			for i in b_keys - s_keys:
+				self.storage[i] = b[i]
 		self.backers = [ ]
 
 class FinalizableDict(collections.MutableMapping):
