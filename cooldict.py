@@ -75,8 +75,11 @@ class BackedDict(collections.MutableMapping):
 		self.storage[k] = v
 
 	def __iter__(self):
-		for k in itertools.chain(self.storage, *[ p for p in self.backers ]):
-			if k not in self.deleted:
+		chain = itertools.chain(self.storage, *[ p for p in self.backers ])
+		seen = set()
+		for k in chain:
+			if k not in self.deleted and k not in seen:
+				seen.add(k)
 				yield k
 
 	def __len__(self):
@@ -225,3 +228,7 @@ if __name__ == "__main__":
 	assert len(b4) == 1
 	b5[two] = 2
 	assert len(b5) == 2
+
+	b6 = BackedDict({a: 'a'})
+	b6[a] = 'b'
+	assert len(b6) == 1
