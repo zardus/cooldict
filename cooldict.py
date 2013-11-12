@@ -115,7 +115,7 @@ class FinalizableDict(collections.MutableMapping):
 		self.finalized = True
 
 class BranchingDict(collections.MutableMapping):
-	''' This implements a branching dictionary. Basically, a BranchingDict can be copy()ed and the two copies will thereafter share a common backer, but will not write back to that backer. Can probably be reimplemented without FinalizableDict. '''
+	''' This implements a branching dictionary. Basically, a BranchingDict can be branch()ed and the two copies will thereafter share a common backer, but will not write back to that backer. Can probably be reimplemented without FinalizableDict. '''
 	def __init__(self, d = None):
 		d = { } if d is None else d
 		if not isinstance(d, FinalizableDict):
@@ -143,7 +143,7 @@ class BranchingDict(collections.MutableMapping):
 	def __len__(self):
 		return self.cowdict.__len__()
 
-	def copy(self):
+	def branch(self):
 		self.cowdict.finalize()
 		return BranchingDict(self.cowdict)
 
@@ -188,8 +188,8 @@ if __name__ == "__main__":
 	del b3[a]
 	assert len(b3) == 3 
 	d1 = BranchingDict(b3)
-	d2 = d1.copy()
-	d3 = d2.copy()
+	d2 = d1.branch()
+	d3 = d2.branch()
 
 	d1[d] = d
 	assert len(b3) == 3
