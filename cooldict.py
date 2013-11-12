@@ -9,17 +9,21 @@ class FinalizedError(Exception):
 
 class CachedDict(collections.MutableMapping):
 	''' Implements a write-through cache around another dict. '''
-	def __init__(self, backer):
+	def __init__(self, backer, cacher = None):
 		self.backer = backer
 		self.cache = { }
+		self.cacher = cacher if cacher else self.default_cacher
 
-	def __getitem__(self, a):
+	def default_cacher(self, k):
+		v = self.backer[k]
+		self.cache[k] = v
+		return v
+
+	def __getitem__(self, k):
 		try:
-			return self.cache[a]
+			return self.cache[k]
 		except KeyError:
-			v = self.backer[a]
-			self.cache[a] = v
-			return v
+			return self.cacher(k)
 
 	def __setitem__(self, k, v):
 		self.cache[k] = v
@@ -229,8 +233,8 @@ def test():
 	b5[two] = 2
 	assert len(b5) == 2
 
-	b6 = BackedDict({a: 'a'})
-	b6[a] = 'b'
+	b6 = BackedDict({three: 3})
+	b6[three] = 3
 	assert len(b6) == 1
 
 if __name__ == "__main__":
