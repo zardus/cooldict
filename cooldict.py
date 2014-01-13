@@ -2,10 +2,17 @@ import collections
 import itertools
 
 import logging
-l = logging.getLogger("cowdict")
+l = logging.getLogger("cooldict")
 
 class FinalizedError(Exception):
 	pass
+
+class BranchingDictError(Exception):
+	pass
+
+############################
+### The dicts themselves ###
+############################
 
 class CachedDict(collections.MutableMapping):
 	''' Implements a write-through cache around another dict. '''
@@ -133,6 +140,48 @@ class BranchingDict(collections.MutableMapping):
 			d = FinalizableDict(d)
 		self.cowdict = d
 
+	# Returns the ancestry of this dict, back to the first dict that we don't recognize
+	# or that has more than one backer.
+	def ancestry_line(self):
+		oldest = self.cowdict
+
+		while True:
+			if isinstance(oldest, FinalizableDict):
+				yield oldest
+				oldest = oldest.storage
+			elif isinstance(oldest, BackedDict):
+				yield oldest
+				if len(oldest.backers) != 1: # pylint: disable=E1103
+					break
+				oldest = oldest.backers[0] # pylint: disable=E1103
+			else:
+				yield oldest
+				break
+
+	# Returns the common ancestor between self and other.
+	def common_ancestor(self, other):
+		our_line = self.ancestry_line()
+		for d in other.ancestry_line():
+			if d in our_line:
+				return d
+		return None
+
+	# Returns the entries created and the entries deleted since the specified ancestor.
+	def changes_since(self, ancestor):
+		created = set()
+		deleted = set()
+
+		for a in self.ancestry_line():
+			if a == ancestor:
+				break
+			if isinstance(a, FinalizableDict):
+				continue
+
+			created.update(set(a.storage.keys()) - deleted)
+			deleted.update(a.deleted - created)
+
+		return created, deleted
+
 	def __getitem__(self, a):
 		return self.cowdict[a]
 
@@ -159,7 +208,11 @@ class BranchingDict(collections.MutableMapping):
 		return BranchingDict(self.cowdict)
 
 def test():
-	import standard_logging; standard_logging
+	try:
+		import standard_logging # pylint: disable=W0612,
+	except ImportError:
+		pass
+
 	l.setLevel(logging.DEBUG)
 
 	a = "aa"
@@ -214,6 +267,23 @@ def test():
 	d3[b] = "omg"
 	assert d3[b] == "omg"
 	assert d2[b] == 'b'
+
+	d4 = d3.branch()
+	del d4[b]
+	del d4[c]
+
+	d5 = d4.branch()
+	d5['hmm'] = 5
+	d6 = d5.branch()
+
+	common = d4.common_ancestor(d2)
+	changed, deleted = d4.changes_since(common)
+	assert len(changed) == 0
+	assert len(deleted) == 2
+
+	changed, deleted = d6.changes_since(common)
+	assert len(changed) == 1
+	assert len(deleted) == 2
 
 	b3.flatten()
 	assert len(b3.backers) == 0
