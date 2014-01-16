@@ -172,7 +172,7 @@ class BranchingDict(collections.MutableMapping):
 		deleted = set()
 
 		for a in self.ancestry_line():
-			if a == ancestor:
+			if a is ancestor:
 				break
 			if isinstance(a, FinalizableDict):
 				continue
