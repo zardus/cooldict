@@ -160,9 +160,9 @@ class BranchingDict(collections.MutableMapping):
 
 	# Returns the common ancestor between self and other.
 	def common_ancestor(self, other):
-		our_line = self.ancestry_line()
+		our_line = set([ id(a) for a in self.ancestry_line() ])
 		for d in other.ancestry_line():
-			if d in our_line:
+			if id(d) in our_line:
 				return d
 		return None
 
@@ -174,11 +174,13 @@ class BranchingDict(collections.MutableMapping):
 		for a in self.ancestry_line():
 			if a is ancestor:
 				break
-			if isinstance(a, FinalizableDict):
+			elif isinstance(a, FinalizableDict):
 				continue
-
-			created.update(set(a.storage.keys()) - deleted)
-			deleted.update(a.deleted - created)
+			elif isinstance(a, BackedDict):
+				created.update(set(a.storage.keys()) - deleted)
+				deleted.update(a.deleted - created)
+			elif isinstance(a, dict):
+				created.update(a.keys())
 
 		return created, deleted
 
