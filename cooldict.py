@@ -10,6 +10,9 @@ class FinalizedError(Exception):
 class BranchingDictError(Exception):
 	pass
 
+import sys
+default_max_depth = sys.getrecursionlimit() * 0.4
+
 ############################
 ### The dicts themselves ###
 ############################
@@ -97,6 +100,8 @@ class BackedDict(collections.MutableMapping):
 		return len(list(self.__iter__()))
 
 	def flatten(self):
+		l.info("Flattening backers of %s!", self)
+
 		s_keys = set(self.storage.keys())
 		for b in reversed(self.backers):
 			b_keys = set(b.keys())
@@ -134,11 +139,26 @@ class FinalizableDict(collections.MutableMapping):
 
 class BranchingDict(collections.MutableMapping):
 	''' This implements a branching dictionary. Basically, a BranchingDict can be branch()ed and the two copies will thereafter share a common backer, but will not write back to that backer. Can probably be reimplemented without FinalizableDict. '''
-	def __init__(self, d = None):
+	def __init__(self, d = None, max_depth = 400, min_depth = 100):
 		d = { } if d is None else d
 		if not isinstance(d, FinalizableDict):
 			d = FinalizableDict(d)
 		self.cowdict = d
+
+		ancestors = list(self.ancestry_line())
+		if len(ancestors) > max_depth:
+			l.debug("BranchingDict got too deep (%d)", len(ancestors))
+			new_dictriarch = None
+			for k in ancestors[min_depth:]:
+				if isinstance(k, BackedDict):
+					new_dictriarch = k
+					break
+			if new_dictriarch is not None:
+				l.debug("Found ancestor %s", new_dictriarch)
+				new_dictriarch.flatten()
+
+		self.max_depth = max_depth
+		self.min_depth = min_depth
 
 	# Returns the ancestry of this dict, back to the first dict that we don't recognize
 	# or that has more than one backer.
@@ -207,7 +227,7 @@ class BranchingDict(collections.MutableMapping):
 
 	def branch(self):
 		self.cowdict.finalize()
-		return BranchingDict(self.cowdict)
+		return BranchingDict(self.cowdict, max_depth=self.max_depth, min_depth=self.min_depth)
 
 def test():
 	try:
@@ -277,6 +297,20 @@ def test():
 	d5 = d4.branch()
 	d5['hmm'] = 5
 	d6 = d5.branch()
+
+	assert len(list(d5.ancestry_line())) == 8
+	dnew = d5.branch()
+	dnew['ohsnap'] = 1
+	for _ in range(99):
+		dnew = dnew.branch()
+		dnew['ohsnap'] += 1
+	assert len(list(dnew.ancestry_line())) == 208
+
+	for _ in range(8000):
+		print "Branching dict number", _
+		dnew = dnew.branch()
+		dnew['ohsnap'] += 1
+	assert len(list(dnew.ancestry_line())) == 308
 
 	common = d4.common_ancestor(d2)
 	changed, deleted = d4.changes_since(common)
