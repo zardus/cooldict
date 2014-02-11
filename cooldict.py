@@ -12,6 +12,7 @@ class BranchingDictError(Exception):
 
 import sys
 default_max_depth = sys.getrecursionlimit() * 0.4
+default_min_depth = 100
 
 ############################
 ### The dicts themselves ###
@@ -139,7 +140,10 @@ class FinalizableDict(collections.MutableMapping):
 
 class BranchingDict(collections.MutableMapping):
 	''' This implements a branching dictionary. Basically, a BranchingDict can be branch()ed and the two copies will thereafter share a common backer, but will not write back to that backer. Can probably be reimplemented without FinalizableDict. '''
-	def __init__(self, d = None, max_depth = 400, min_depth = 100):
+	def __init__(self, d = None, max_depth = None, min_depth = None):
+		max_depth = default_max_depth if max_depth is None else max_depth
+		min_depth = default_min_depth if min_depth is None else min_depth
+
 		d = { } if d is None else d
 		if not isinstance(d, FinalizableDict):
 			d = FinalizableDict(d)
