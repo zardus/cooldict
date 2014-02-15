@@ -14,6 +14,41 @@ import sys
 default_max_depth = sys.getrecursionlimit() * 0.2
 default_min_depth = 100
 
+# Returns the local storage of the dictionary
+def get_storage(d):
+    if isinstance(d, FinalizableDict):
+        return { }
+    elif isinstance(d, BackedDict):
+        return d.storage
+    elif isinstance(d, CachedDict):
+        return d.cache
+    elif isinstance(d, BranchingDict):
+        return { }
+    else:
+        return d
+
+# Returns the backers of the dictionary
+def get_backers(d):
+    if isinstance(d, FinalizableDict):
+        return [ d.storage ]
+    elif isinstance(d, BackedDict):
+        return d.backers
+    elif isinstance(d, CachedDict):
+        return [ d.backer ]
+    elif isinstance(d, BranchingDict):
+        return [ d.cowdict ]
+    else:
+        return [ ]
+
+# Returns the ancestry of this dict, back to the first dict that we don't recognize
+# or that has more than one backer.
+def ancestry_line(d):
+    b = get_backers(d)
+
+    while len(b) == 1:
+        yield b[0]
+        b = get_backers(b[0])
+
 ############################
 ### The dicts themselves ###
 ############################
@@ -102,13 +137,37 @@ class BackedDict(collections.MutableMapping):
 
     def flatten(self):
         l.info("Flattening backers of %s!", self)
+        if len(self.backers) > 1:
+            l.debug("Slow path")
+            self.storage = dict(self)
+            self.backers = [ ]
+        else:
+            ancestors = [ get_storage(a) for a in ancestry_line(self) ]
+            ancestor_keys = [ set(a.keys()) for a in ancestors ]
+            remaining = set()
 
-        s_keys = set(self.storage.keys())
-        for b in reversed(self.backers):
-            b_keys = set(b.keys())
-            for i in b_keys - s_keys:
-                self.storage[i] = b[i]
-        self.backers = [ ]
+            for a in reversed(ancestors):
+                keys = set(get_storage(a).iterkeys())
+                ancestor_keys.append(keys)
+                remaining |= keys
+                if isinstance(a, BackedDict):
+                    remaining -= a.deleted
+
+            remaining -= set(self.storage.iterkeys())
+            remaining -= self.deleted
+
+            for a,keys in zip(ancestors, ancestor_keys):
+                toadd = keys & remaining
+                if len(toadd) == 0:
+                    continue
+                l.debug("Adding %d keys from %s", len(toadd), a)
+                for k in toadd:
+                    self.storage[k] = a[k]
+                remaining -= keys
+
+            if len(remaining) != 0:
+                raise Exception("%d items remaining after flatten!", len(remaining))
+            self.backers = [ ]
 
 class FinalizableDict(collections.MutableMapping):
     ''' Implements a finalizable dict. This is meant to support BranchingDict, and offers no guarantee about the actual immutability of the underlying data. It's quite easy to bypass. You've been warned. '''
@@ -167,20 +226,7 @@ class BranchingDict(collections.MutableMapping):
     # Returns the ancestry of this dict, back to the first dict that we don't recognize
     # or that has more than one backer.
     def ancestry_line(self):
-        oldest = self.cowdict
-
-        while True:
-            if isinstance(oldest, FinalizableDict):
-                yield oldest
-                oldest = oldest.storage
-            elif isinstance(oldest, BackedDict):
-                yield oldest
-                if len(oldest.backers) != 1: # pylint: disable=E1103
-                    break
-                oldest = oldest.backers[0] # pylint: disable=E1103
-            else:
-                yield oldest
-                break
+        return ancestry_line(self)
 
     # Returns the common ancestor between self and other.
     def common_ancestor(self, other):
@@ -290,6 +336,10 @@ def test():
     assert d1[b] == 'b'
     assert d1[one] == 1
 
+    b3.flatten()
+    assert len(b3.backers) == 0
+    assert len(b3) == 3
+
     d3[b] = "omg"
     assert d3[b] == "omg"
     assert d2[b] == 'b'
@@ -308,13 +358,13 @@ def test():
     for _ in range(99):
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
-    assert len(list(dnew.ancestry_line())) == 208
+    assert len(list(dnew.ancestry_line())) == 108
 
     for _ in range(8000):
         print "Branching dict number", _
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
-    assert len(list(dnew.ancestry_line())) == 308
+    assert len(list(dnew.ancestry_line())) == 108
 
     common = d4.common_ancestor(d2)
     changed, deleted = d4.changes_since(common)
@@ -324,10 +374,6 @@ def test():
     changed, deleted = d6.changes_since(common)
     assert len(changed) == 1
     assert len(deleted) == 2
-
-    b3.flatten()
-    assert len(b3.backers) == 0
-    assert len(b3) == 3
 
     b0 = { }
     b4 = BackedDict(storage=b0)
