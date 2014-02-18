@@ -139,7 +139,12 @@ class BackedDict(collections.MutableMapping):
         l.info("Flattening backers of %s!", self)
         if len(self.backers) > 1:
             l.debug("Slow path")
-            self.storage = dict(self)
+
+            s_keys = set(self.storage.keys())
+            for b in reversed(self.backers):
+                b_keys = set(b.keys())
+                for i in b_keys - s_keys:
+                    self.storage[i] = b[i]
             self.backers = [ ]
         else:
             ancestors = [ get_storage(a) for a in ancestry_line(self) ]
