@@ -147,9 +147,25 @@ class BackedDict(collections.MutableMapping):
                     self.storage[i] = b[i]
             self.backers = [ ]
         else:
-            ancestors = [ get_storage(a) for a in ancestry_line(self) ]
+            a_line = list(ancestry_line(self))
+            ancestors = [ get_storage(a) for a in a_line ]
             ancestor_keys = [ set(a.keys()) for a in ancestors ]
             remaining = set()
+            new_backers = [ ]
+
+            try:
+                #print "Checking for ignores"
+                ignored_idx = [ getattr(a, 'cooldict_ignore', False) for a in a_line ].index(True)
+                #print "... found at",ignored_idx
+                new_backers = [ a_line[ignored_idx] ]
+                ancestors = ancestors[:ignored_idx]
+                ancestor_keys = ancestor_keys[:ignored_idx]
+            except ValueError:
+                #print "... not found"
+                pass
+
+            #print "ancestors:",ancestors
+            #print "new ancestors:",ancestors
 
             for a in reversed(ancestors):
                 keys = set(get_storage(a).iterkeys())
@@ -172,7 +188,7 @@ class BackedDict(collections.MutableMapping):
 
             if len(remaining) != 0:
                 raise Exception("%d items remaining after flatten!", len(remaining))
-            self.backers = [ ]
+            self.backers = new_backers
 
 class FinalizableDict(collections.MutableMapping):
     ''' Implements a finalizable dict. This is meant to support BranchingDict, and offers no guarantee about the actual immutability of the underlying data. It's quite easy to bypass. You've been warned. '''
