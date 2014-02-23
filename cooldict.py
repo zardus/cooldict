@@ -1,5 +1,10 @@
 import collections
 import itertools
+import weakref
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import logging
 l = logging.getLogger("cooldict")
@@ -14,8 +19,13 @@ import sys
 default_max_depth = sys.getrecursionlimit() * 0.2
 default_min_depth = 100
 
-# Returns the local storage of the dictionary
+
+#####################
+### Utility stuff ###
+#####################
+
 def get_storage(d):
+    '''Returns the local storage of the dictionary.'''
     if isinstance(d, FinalizableDict):
         return { }
     elif isinstance(d, BackedDict):
@@ -27,8 +37,8 @@ def get_storage(d):
     else:
         return d
 
-# Returns the backers of the dictionary
 def get_backers(d):
+    '''Returns the backers of the dictionary.'''
     if isinstance(d, FinalizableDict):
         return [ d.storage ]
     elif isinstance(d, BackedDict):
@@ -40,14 +50,58 @@ def get_backers(d):
     else:
         return [ ]
 
-# Returns the ancestry of this dict, back to the first dict that we don't recognize
-# or that has more than one backer.
+def get_deleted(d):
+    if isinstance(d, BackedDict):
+        return d.deleted
+    else:
+        return set()
+
+def get_id(d):
+    '''Returns the ID of the dictionary.'''
+    if isinstance(d, BackedDict):
+        return d.dict_id
+    else:
+        return id(d)
+
 def ancestry_line(d):
+    '''
+    Returns the ancestry of this dict, back to the first dict that we don't
+    recognize or that has more than one backer.
+    '''
     b = get_backers(d)
 
     while len(b) == 1:
         yield b[0]
         b = get_backers(b[0])
+
+class DictSaver():
+    def __init__(self, target_dir):
+        self._refs = weakref.WeakValueDictionary()
+        self.target_dir = target_dir
+
+    def register(self, b):
+        self._refs[id(b)] = b
+
+    def save(self, b):
+        if isinstance(b, BackedDict):
+            l.debug("Pickling BackedDict!.")
+            pickle.dump(b, open("%s/%d.p" % (self.target_dir, b.dict_id), "w"))
+            return b.dict_id
+        else:
+            l.debug("Not a BackedDict, returning it.")
+            return b
+
+    def load(self, b):
+        if type(b) == int:
+            try:
+                b = self._refs[b]
+                l.debug("Returning BackedDict from cache.")
+            except KeyError:
+                l.debug("Loading BackedDict from pickle!")
+                b = pickle.load(open("%s/%d.p" % (self.target_dir, b)))
+                self._refs[b.dict_id] = b
+        return b
+saver = DictSaver("pickle/")
 
 ############################
 ### The dicts themselves ###
@@ -59,7 +113,6 @@ class CachedDict(collections.MutableMapping):
         self.backer = backer
         self.cache = { }
         self.cacher = cacher if cacher else self.default_cacher
-        self.pickle_cache = False
 
     def default_cacher(self, k):
         v = self.backer[k]
@@ -83,23 +136,27 @@ class CachedDict(collections.MutableMapping):
     def __iter__(self):
         return self.backer.__iter__()
 
+    def __len__(self):
+        return len(list(self.__iter__()))
+
     def __getstate__(self):
-        state = { 'backer': self.backer, 'cacher': self.cacher, 'pickle_cache': self.pickle_cache}
-        if self.pickle_cache:
+        state = { 'backer': self.backer, 'cacher': self.cacher }
+        if getattr(self, '_pickle_cache', False):
             state['cache'] = self.cache
         else:
             state['cache'] = { }
-        return state
 
-    def __len__(self):
-        return len(list(self.__iter__()))
+        state['_pickle_cache'] = getattr(self, '_pickle_cache', False)
+        return state
 
 class BackedDict(collections.MutableMapping):
     ''' Implements a mapping that's backed by other mappings. '''
     def __init__(self, *backers, **kwargs):
         self.backers = backers
-        self.storage = { } if 'storage' not in kwargs else kwargs['storage']
-        self.deleted = set()
+        self.storage = kwargs.get('storage', { })
+        self.deleted = kwargs.get('deleted', set())
+        saver.register(self)
+        self.dict_id = id(self)
 
     def __getitem__(self, a):
         # make sure we haven't deleted it
@@ -199,6 +256,16 @@ class BackedDict(collections.MutableMapping):
                 raise Exception("%d items remaining after flatten!", len(remaining))
             self.backers = new_backers
 
+    def __getstate__(self):
+        backers = [ saver.save(b) for b in self.backers ]
+        return { 'storage': self.storage, 'deleted': self.deleted, 'dict_id': self.dict_id, 'backers': backers }
+
+    def __setstate__(self, state):
+        self.backers = [ saver.load(b) for b in state['backers'] ]
+        self.storage = state['storage']
+        self.deleted = state['deleted']
+        self.dict_id = state['dict_id']
+
 class FinalizableDict(collections.MutableMapping):
     ''' Implements a finalizable dict. This is meant to support BranchingDict, and offers no guarantee about the actual immutability of the underlying data. It's quite easy to bypass. You've been warned. '''
     def __init__(self, storage = None):
@@ -225,6 +292,14 @@ class FinalizableDict(collections.MutableMapping):
         return self.storage.__len__()
 
     def finalize(self):
+        self.finalized = True
+
+    def __getstate__(self):
+        self.finalize()
+        return { 'storage': saver.save(self.storage) }
+
+    def __setstate__(self, state):
+        self.storage = saver.load(state['storage'])
         self.finalized = True
 
 class BranchingDict(collections.MutableMapping):
@@ -260,9 +335,9 @@ class BranchingDict(collections.MutableMapping):
 
     # Returns the common ancestor between self and other.
     def common_ancestor(self, other):
-        our_line = set([ id(a) for a in self.ancestry_line() ])
+        our_line = set([ get_id(a) for a in self.ancestry_line() ])
         for d in other.ancestry_line():
-            if id(d) in our_line:
+            if get_id(d) in our_line:
                 return d
         return None
 
@@ -317,6 +392,7 @@ def test():
 
     l.setLevel(logging.DEBUG)
 
+    l.info("Testing basic BackedDict functionality.")
     a = "aa"
     b = "bb"
     c = "cc"
@@ -353,6 +429,8 @@ def test():
 
     del b3[a]
     assert len(b3) == 3 
+
+    l.info("Testing BranchingDict functionality.")
     d1 = BranchingDict(b3)
     d2 = d1.branch()
     d3 = d2.branch()
@@ -382,6 +460,7 @@ def test():
     d5['hmm'] = 5
     d6 = d5.branch()
 
+    l.info("Testing BranchingDict ancestry and flattening.")
     assert len(list(d5.ancestry_line())) == 5
     dnew = d5.branch()
     dnew['ohsnap'] = 1
@@ -390,7 +469,7 @@ def test():
         dnew['ohsnap'] += 1
     assert len(list(dnew.ancestry_line())) == 56
 
-    for _ in range(8000):
+    for _ in range(2000):
         print "Branching dict number", _
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
@@ -405,6 +484,7 @@ def test():
     assert len(changed) == 1
     assert len(deleted) == 2
 
+    l.info("Testing CachedDict.")
     b0 = { }
     b4 = BackedDict(storage=b0)
     b4[one] = 'one'
@@ -426,6 +506,41 @@ def test():
     b6 = BackedDict({three: 3})
     b6[three] = 3
     assert len(b6) == 1
+
+    l.info("Testing pickling.")
+    pb1 = BackedDict({1: '1', 2: '2', 3: '3'})
+    i = saver.save(pb1)
+    assert i == id(pb1)
+
+    assert i in saver._refs # pylint: disable=W0212,
+    del pb1
+    assert i not in saver._refs # pylint: disable=W0212,
+    pb1 = saver.load(i)
+    assert pb1.dict_id == i
+    assert len(pb1) == 3
+    assert len(pb1.storage) == 0
+    assert pb1[2] == '2'
+
+    pb1a = saver.load(i)
+    assert pb1 is pb1a
+    del pb1a
+
+    pb2 = BackedDict(pb1, {'a': 1, 'b': 2})
+    pb2s = pickle.dumps(pb2)
+    del pb2
+    pb2 = pickle.loads(pb2s)
+    assert pb1 is pb2.backers[0]
+
+    bb1 = BranchingDict(pb2)
+    bb2 = bb1.branch()
+    bb1[4] = '4'
+
+    assert bb1.common_ancestor(bb2) == pb2
+    bb1s = pickle.dumps(bb1)
+    del bb1
+    bb1 = pickle.loads(bb1s)
+
+    assert bb1.common_ancestor(bb2) == pb2
 
 if __name__ == "__main__":
     test()
