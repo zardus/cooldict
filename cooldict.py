@@ -58,7 +58,7 @@ def get_deleted(d):
 
 def get_id(d):
     '''Returns the ID of the dictionary.'''
-    if isinstance(d, BackedDict):
+    if hasattr(d, 'dict_id'):
         return d.dict_id
     else:
         return id(d)
@@ -83,21 +83,21 @@ class DictSaver():
         self._refs[id(b)] = b
 
     def save(self, b):
-        if isinstance(b, BackedDict):
-            l.debug("Pickling BackedDict!.")
+        if getattr(b, '_pickle_by_id', False):
+            l.debug("Pickling by ID!.")
             pickle.dump(b, open("%s/%d.p" % (self.target_dir, b.dict_id), "w"))
             return b.dict_id
         else:
-            l.debug("Not a BackedDict, returning it.")
+            l.debug("Not pickling by ID, returning it.")
             return b
 
     def load(self, b):
         if type(b) == int:
             try:
                 b = self._refs[b]
-                l.debug("Returning BackedDict from cache.")
+                l.debug("Returning dict from cache.")
             except KeyError:
-                l.debug("Loading BackedDict from pickle!")
+                l.debug("Loading dict from pickle!")
                 b = pickle.load(open("%s/%d.p" % (self.target_dir, b)))
                 self._refs[b.dict_id] = b
         return b
@@ -139,7 +139,7 @@ class CachedDict(collections.MutableMapping):
         return len(list(self.__iter__()))
 
     def __getstate__(self):
-        state = { 'backer': self.backer }
+        state = { 'backer': saver.save(self.backer) }
         if getattr(self, '_pickle_cache', False):
             state['cache'] = self.cache
         else:
@@ -148,8 +148,16 @@ class CachedDict(collections.MutableMapping):
         state['_pickle_cache'] = getattr(self, '_pickle_cache', False)
         return state
 
+    def __setstate__(self, state):
+        setattr(self, '_pickle_state', state['_pickle_cache'])
+        self.cache = state['cache']
+        self.backer = saver.load(state['backer'])
+
 class BackedDict(collections.MutableMapping):
     ''' Implements a mapping that's backed by other mappings. '''
+
+    _pickle_by_id = True
+
     def __init__(self, *backers, **kwargs):
         self.backers = backers
         self.storage = kwargs.get('storage', { })
