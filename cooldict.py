@@ -59,6 +59,7 @@ class CachedDict(collections.MutableMapping):
         self.backer = backer
         self.cache = { }
         self.cacher = cacher if cacher else self.default_cacher
+        self.pickle_cache = False
 
     def default_cacher(self, k):
         v = self.backer[k]
@@ -81,6 +82,14 @@ class CachedDict(collections.MutableMapping):
 
     def __iter__(self):
         return self.backer.__iter__()
+
+    def __getstate__(self):
+        state = { 'backer': self.backer, 'cacher': self.cacher, 'pickle_cache': self.pickle_cache}
+        if self.pickle_cache:
+            state['cache'] = self.cache
+        else:
+            state['cache'] = { }
+        return state
 
     def __len__(self):
         return len(list(self.__iter__()))
@@ -281,13 +290,13 @@ class BranchingDict(collections.MutableMapping):
     def __setitem__(self, k, v):
         if self.cowdict.finalized:
             l.debug("Got a finalized dict. Making a child.")
-            self.cowdict = FinalizableDict(BackedDict(self.cowdict))
+            self.cowdict = FinalizableDict(BackedDict(self.cowdict.storage))
         self.cowdict[k] = v
 
     def __delitem__(self, k):
         if self.cowdict.finalized:
             l.debug("Got a finalized dict. Making a child.")
-            self.cowdict = FinalizableDict(BackedDict(self.cowdict))
+            self.cowdict = FinalizableDict(BackedDict(self.cowdict.storage))
         del self.cowdict[k]
 
     def __iter__(self):
@@ -373,19 +382,19 @@ def test():
     d5['hmm'] = 5
     d6 = d5.branch()
 
-    assert len(list(d5.ancestry_line())) == 8
+    assert len(list(d5.ancestry_line())) == 5
     dnew = d5.branch()
     dnew['ohsnap'] = 1
-    for _ in range(99):
+    for _ in range(50):
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
-    assert len(list(dnew.ancestry_line())) == 108
+    assert len(list(dnew.ancestry_line())) == 56
 
     for _ in range(8000):
         print "Branching dict number", _
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
-    assert len(list(dnew.ancestry_line())) == 108
+    assert len(list(dnew.ancestry_line())) == 156
 
     common = d4.common_ancestor(d2)
     changed, deleted = d4.changes_since(common)
