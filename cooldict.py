@@ -109,10 +109,9 @@ saver = DictSaver("pickle/")
 
 class CachedDict(collections.MutableMapping):
     ''' Implements a write-through cache around another dict. '''
-    def __init__(self, backer, cacher = None):
+    def __init__(self, backer):
         self.backer = backer
         self.cache = { }
-        self.cacher = cacher if cacher else self.default_cacher
 
     def default_cacher(self, k):
         v = self.backer[k]
@@ -123,7 +122,7 @@ class CachedDict(collections.MutableMapping):
         try:
             return self.cache[k]
         except KeyError:
-            return self.cacher(k)
+            return self.default_cacher(k)
 
     def __setitem__(self, k, v):
         self.cache[k] = v
@@ -140,7 +139,7 @@ class CachedDict(collections.MutableMapping):
         return len(list(self.__iter__()))
 
     def __getstate__(self):
-        state = { 'backer': self.backer, 'cacher': self.cacher }
+        state = { 'backer': self.backer }
         if getattr(self, '_pickle_cache', False):
             state['cache'] = self.cache
         else:
