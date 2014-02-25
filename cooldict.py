@@ -1,3 +1,5 @@
+import os
+import sys
 import collections
 import itertools
 import weakref
@@ -15,7 +17,6 @@ class FinalizedError(Exception):
 class BranchingDictError(Exception):
     pass
 
-import sys
 default_max_depth = sys.getrecursionlimit() * 0.2
 default_min_depth = 100
 
@@ -85,7 +86,11 @@ class DictSaver():
     def save(self, b):
         if getattr(b, '_pickle_by_id', False):
             l.debug("Pickling by ID!.")
-            pickle.dump(b, open("%s/%d.p" % (self.target_dir, b.dict_id), "w"))
+            filename = "%s/%d.p" % (self.target_dir, b.dict_id)
+            if not os.path.exists(filename):
+                pickle.dump(b, open(filename, "w"))
+            else:
+                l.debug("%s already exists!", filename)
             return b.dict_id
         else:
             l.debug("Not pickling by ID, returning it.")
@@ -101,7 +106,7 @@ class DictSaver():
                 b = pickle.load(open("%s/%d.p" % (self.target_dir, b)))
                 self._refs[b.dict_id] = b
         return b
-saver = DictSaver("pickle/")
+saver = DictSaver("pickle")
 
 ############################
 ### The dicts themselves ###
