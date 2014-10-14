@@ -84,6 +84,8 @@ class DictSaver():
         self._refs[id(b)] = b
 
     def save(self, b):
+        if not os.path.exists(self.target_dir): os.makedirs(self.target_dir)
+
         if getattr(b, '_pickle_by_id', False):
             l.debug("Pickling by ID!.")
             filename = "%s/%d.p" % (self.target_dir, b.dict_id)
@@ -106,7 +108,7 @@ class DictSaver():
                 b = pickle.load(open("%s/%d.p" % (self.target_dir, b)))
                 self._refs[b.dict_id] = b
         return b
-saver = DictSaver("pickle")
+saver = DictSaver("pickles")
 
 ############################
 ### The dicts themselves ###
