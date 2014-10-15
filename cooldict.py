@@ -75,7 +75,7 @@ def ancestry_line(d):
 ### The dicts themselves ###
 ############################
 
-class CachedDict(ana.StorableABC, collections.MutableMapping):
+class CachedDict(ana.Storable, collections.MutableMapping):
     ''' Implements a write-through cache around another dict. '''
 
     def __init__(self, backer):
@@ -116,7 +116,7 @@ class CachedDict(ana.StorableABC, collections.MutableMapping):
         self.backer = state
         self.cache = { }
 
-class BackedDict(ana.StorableABC, collections.MutableMapping):
+class BackedDict(ana.Storable, collections.MutableMapping):
     ''' Implements a mapping that's backed by other mappings. '''
 
     def __init__(self, *backers, **kwargs):
@@ -230,7 +230,7 @@ class BackedDict(ana.StorableABC, collections.MutableMapping):
     def _ana_setstate(self, state):
         self.storage, self.deleted, self.backers = state
 
-class FinalizableDict(ana.StorableABC, collections.MutableMapping):
+class FinalizableDict(ana.Storable, collections.MutableMapping):
     ''' Implements a finalizable dict. This is meant to support BranchingDict, and offers no guarantee about the actual immutability of the underlying data. It's quite easy to bypass. You've been warned. '''
 
     def __init__(self, storage = None):
