@@ -1,12 +1,8 @@
-import os
 import sys
 import collections
 import itertools
-import weakref
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
+
+import ana
 
 import logging
 l = logging.getLogger("cooldict")
@@ -75,50 +71,18 @@ def ancestry_line(d):
         yield b[0]
         b = get_backers(b[0])
 
-class DictSaver():
-    def __init__(self, target_dir):
-        self._refs = weakref.WeakValueDictionary()
-        self.target_dir = target_dir
-
-    def register(self, b):
-        self._refs[id(b)] = b
-
-    def save(self, b):
-        if not os.path.exists(self.target_dir): os.makedirs(self.target_dir)
-
-        if getattr(b, '_pickle_by_id', False):
-            l.debug("Pickling by ID!.")
-            filename = "%s/%d.p" % (self.target_dir, b.dict_id)
-            if not os.path.exists(filename):
-                pickle.dump(b, open(filename, "w"))
-            else:
-                l.debug("%s already exists!", filename)
-            return b.dict_id
-        else:
-            l.debug("Not pickling by ID, returning it.")
-            return b
-
-    def load(self, b):
-        if type(b) == int:
-            try:
-                b = self._refs[b]
-                l.debug("Returning dict from cache.")
-            except KeyError:
-                l.debug("Loading dict from pickle!")
-                b = pickle.load(open("%s/%d.p" % (self.target_dir, b)))
-                self._refs[b.dict_id] = b
-        return b
-saver = DictSaver("pickles")
-
 ############################
 ### The dicts themselves ###
 ############################
 
-class CachedDict(collections.MutableMapping):
+class CachedDict(ana.StorableABC, collections.MutableMapping):
     ''' Implements a write-through cache around another dict. '''
+
     def __init__(self, backer):
         self.backer = backer
         self.cache = { }
+
+        self.make_uuid()
 
     def default_cacher(self, k):
         v = self.backer[k]
@@ -145,32 +109,22 @@ class CachedDict(collections.MutableMapping):
     def __len__(self):
         return len(list(self.__iter__()))
 
-    def __getstate__(self):
-        state = { 'backer': saver.save(self.backer) }
-        if getattr(self, '_pickle_cache', False):
-            state['cache'] = self.cache
-        else:
-            state['cache'] = { }
+    def _ana_getstate(self):
+        return self.backer
 
-        state['_pickle_cache'] = getattr(self, '_pickle_cache', False)
-        return state
+    def _ana_setstate(self, state):
+        self.backer = state
+        self.cache = { }
 
-    def __setstate__(self, state):
-        setattr(self, '_pickle_state', state['_pickle_cache'])
-        self.cache = state['cache']
-        self.backer = saver.load(state['backer'])
-
-class BackedDict(collections.MutableMapping):
+class BackedDict(ana.StorableABC, collections.MutableMapping):
     ''' Implements a mapping that's backed by other mappings. '''
-
-    _pickle_by_id = True
 
     def __init__(self, *backers, **kwargs):
         self.backers = backers
         self.storage = kwargs.get('storage', { })
         self.deleted = kwargs.get('deleted', set())
-        saver.register(self)
-        self.dict_id = id(self)
+
+        self.make_uuid()
 
     def __getitem__(self, a):
         # make sure we haven't deleted it
@@ -270,21 +224,20 @@ class BackedDict(collections.MutableMapping):
                 raise Exception("%d items remaining after flatten!", len(remaining))
             self.backers = new_backers
 
-    def __getstate__(self):
-        backers = [ saver.save(b) for b in self.backers ]
-        return { 'storage': self.storage, 'deleted': self.deleted, 'dict_id': self.dict_id, 'backers': backers }
+    def _ana_getstate(self):
+        return self.storage, self.deleted, self.backers
 
-    def __setstate__(self, state):
-        self.backers = [ saver.load(b) for b in state['backers'] ]
-        self.storage = state['storage']
-        self.deleted = state['deleted']
-        self.dict_id = state['dict_id']
+    def _ana_setstate(self, state):
+        self.storage, self.deleted, self.backers = state
 
-class FinalizableDict(collections.MutableMapping):
+class FinalizableDict(ana.StorableABC, collections.MutableMapping):
     ''' Implements a finalizable dict. This is meant to support BranchingDict, and offers no guarantee about the actual immutability of the underlying data. It's quite easy to bypass. You've been warned. '''
+
     def __init__(self, storage = None):
         self.finalized = False
         self.storage = { } if storage is None else storage
+
+        self.make_uuid()
 
     def __getitem__(self, a):
         return self.storage[a]
@@ -308,12 +261,12 @@ class FinalizableDict(collections.MutableMapping):
     def finalize(self):
         self.finalized = True
 
-    def __getstate__(self):
+    def _ana_getstate(self):
         self.finalize()
-        return { 'storage': saver.save(self.storage) }
+        return self.storage
 
-    def __setstate__(self, state):
-        self.storage = saver.load(state['storage'])
+    def _ana_setstate(self, state):
+        self.storage = state
         self.finalized = True
 
 class BranchingDict(collections.MutableMapping):
@@ -399,6 +352,8 @@ class BranchingDict(collections.MutableMapping):
         return BranchingDict(self.cowdict, max_depth=self.max_depth, min_depth=self.min_depth)
 
 def test():
+    import pickle
+
     try:
         import standard_logging # pylint: disable=W0612,
     except ImportError:
@@ -442,7 +397,7 @@ def test():
     assert b2[b] == 'b'
 
     del b3[a]
-    assert len(b3) == 3 
+    assert len(b3) == 3
 
     l.info("Testing BranchingDict functionality.")
     d1 = BranchingDict(b3)
@@ -523,24 +478,21 @@ def test():
 
     l.info("Testing pickling.")
     pb1 = BackedDict({1: '1', 2: '2', 3: '3'})
-    i = saver.save(pb1)
-    assert i == id(pb1)
+    pb1_id = pb1.ana_store()
 
-    assert i in saver._refs # pylint: disable=W0212,
     del pb1
-    assert i not in saver._refs # pylint: disable=W0212,
-    pb1 = saver.load(i)
-    assert pb1.dict_id == i
+    pb1 = BackedDict.ana_load(pb1_id)
+    assert pb1.ana_uuid == pb1_id
     assert len(pb1) == 3
     assert len(pb1.storage) == 0
     assert pb1[2] == '2'
 
-    pb1a = saver.load(i)
+    pb1a = BackedDict.ana_load(pb1_id)
     assert pb1 is pb1a
     del pb1a
 
     pb2 = BackedDict(pb1, {'a': 1, 'b': 2})
-    pb2s = pickle.dumps(pb2)
+    pb2s = pickle.dumps(pb2, -1)
     del pb2
     pb2 = pickle.loads(pb2s)
     assert pb1 is pb2.backers[0]
@@ -550,7 +502,7 @@ def test():
     bb1[4] = '4'
 
     assert bb1.common_ancestor(bb2) == pb2
-    bb1s = pickle.dumps(bb1)
+    bb1s = pickle.dumps(bb1, -1)
     del bb1
     bb1 = pickle.loads(bb1s)
 
