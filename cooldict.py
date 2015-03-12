@@ -439,7 +439,7 @@ def test():
     assert len(list(dnew.ancestry_line())) == 56
 
     for _ in range(2000):
-        print "Branching dict number", _
+        #print "Branching dict number", _
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
     assert len(list(dnew.ancestry_line())) == 156
