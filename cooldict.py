@@ -263,10 +263,10 @@ class FinalizableDict(ana.Storable, collections.MutableMapping):
 
     def _ana_getstate(self):
         self.finalize()
-        return self.storage
+        return (self.storage,)
 
     def _ana_setstate(self, state):
-        self.storage = state
+        self.storage = state[0]
         self.finalized = True
 
 class BranchingDict(collections.MutableMapping):
