@@ -21,22 +21,24 @@ default_min_depth = 100
 ### Utility stuff ###
 #####################
 
+# for speed, cause the ABC instancecheck is slow
+#pylint:disable=unidiomatic-typecheck
+
 def get_storage(d):
     '''Returns the local storage of the dictionary.'''
-    if isinstance(d, FinalizableDict):
+    if type(d) is FinalizableDict:
         return { }
-    elif isinstance(d, BackedDict):
+    elif type(d) is BackedDict:
         return d.storage
-    elif isinstance(d, CachedDict):
+    elif type(d) is CachedDict:
         return d.cache
-    elif isinstance(d, BranchingDict):
+    elif type(d) is BranchingDict:
         return { }
     else:
         return d
 
 def get_backers(d):
     '''Returns the backers of the dictionary.'''
-    #pylint:disable=unidiomatic-typecheck
     if type(d) is FinalizableDict:
         return [ d.storage ]
     elif type(d) is BackedDict:
@@ -49,7 +51,7 @@ def get_backers(d):
         return [ ]
 
 def get_deleted(d):
-    if isinstance(d, BackedDict):
+    if type(d) is BackedDict:
         return d.deleted
     else:
         return set()
@@ -206,7 +208,7 @@ class BackedDict(ana.Storable, collections.MutableMapping):
                 keys = set(get_storage(a).iterkeys())
                 ancestor_keys.append(keys)
                 remaining |= keys
-                if isinstance(a, BackedDict):
+                if type(a) is BackedDict:
                     remaining -= a.deleted
 
             remaining -= set(self.storage.iterkeys())
@@ -277,7 +279,7 @@ class BranchingDict(collections.MutableMapping):
         min_depth = default_min_depth if min_depth is None else min_depth
 
         d = { } if d is None else d
-        if not isinstance(d, FinalizableDict):
+        if not type(d) is FinalizableDict:
             d = FinalizableDict(d)
         self.cowdict = d
 
@@ -286,7 +288,7 @@ class BranchingDict(collections.MutableMapping):
             l.debug("BranchingDict got too deep (%d)", len(ancestors))
             new_dictriarch = None
             for k in ancestors[min_depth:]:
-                if isinstance(k, BackedDict):
+                if type(k) is BackedDict:
                     new_dictriarch = k
                     break
             if new_dictriarch is not None:
@@ -317,9 +319,9 @@ class BranchingDict(collections.MutableMapping):
         for a in self.ancestry_line():
             if a is ancestor:
                 break
-            elif isinstance(a, FinalizableDict):
+            elif type(a) is FinalizableDict:
                 continue
-            elif isinstance(a, BackedDict):
+            elif type(a) is BackedDict:
                 created.update(set(a.storage.keys()) - deleted)
                 deleted.update(a.deleted - created)
             elif isinstance(a, dict):
