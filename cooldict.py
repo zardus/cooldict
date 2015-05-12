@@ -36,13 +36,14 @@ def get_storage(d):
 
 def get_backers(d):
     '''Returns the backers of the dictionary.'''
-    if isinstance(d, FinalizableDict):
+    #pylint:disable=unidiomatic-typecheck
+    if type(d) is FinalizableDict:
         return [ d.storage ]
-    elif isinstance(d, BackedDict):
+    elif type(d) is BackedDict:
         return d.backers
-    elif isinstance(d, CachedDict):
+    elif type(d) is CachedDict:
         return [ d.backer ]
-    elif isinstance(d, BranchingDict):
+    elif type(d) is BranchingDict:
         return [ d.cowdict ]
     else:
         return [ ]
