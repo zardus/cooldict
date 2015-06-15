@@ -16,69 +16,48 @@ class BranchingDictError(Exception):
 default_max_depth = sys.getrecursionlimit() * 0.2
 default_min_depth = 100
 
-
-#####################
-### Utility stuff ###
-#####################
-
 # for speed, cause the ABC instancecheck is slow
 #pylint:disable=unidiomatic-typecheck
-
-def get_storage(d):
-    '''Returns the local storage of the dictionary.'''
-    if type(d) is FinalizableDict:
-        return { }
-    elif type(d) is BackedDict:
-        return d.storage
-    elif type(d) is CachedDict:
-        return d.cache
-    elif type(d) is BranchingDict:
-        return { }
-    else:
-        return d
-
-def get_backers(d):
-    '''Returns the backers of the dictionary.'''
-    if type(d) is FinalizableDict:
-        return [ d.storage ]
-    elif type(d) is BackedDict:
-        return d.backers
-    elif type(d) is CachedDict:
-        return [ d.backer ]
-    elif type(d) is BranchingDict:
-        return [ d.cowdict ]
-    else:
-        return [ ]
-
-def get_deleted(d):
-    if type(d) is BackedDict:
-        return d.deleted
-    else:
-        return set()
-
-def get_id(d):
-    '''Returns the ID of the dictionary.'''
-    if hasattr(d, 'dict_id'):
-        return d.dict_id
-    else:
-        return id(d)
-
-def ancestry_line(d):
-    '''
-    Returns the ancestry of this dict, back to the first dict that we don't
-    recognize or that has more than one backer.
-    '''
-    b = get_backers(d)
-
-    while len(b) == 1:
-        yield b[0]
-        b = get_backers(b[0])
 
 ############################
 ### The dicts themselves ###
 ############################
 
-class CachedDict(ana.Storable, collections.MutableMapping):
+class CoolDict(ana.Storable, collections.MutableMapping):
+    '''
+    The base dict class for CoolDict.
+    '''
+
+    def _ancestry_line(self):
+        '''
+        Returns the ancestry of this dict, back to the first dict that we don't
+        recognize or that has more than one backer.
+        '''
+        b = self._get_backers()
+
+        while len(b) == 1 and hasattr(b[0], '_get_backers'):
+            yield b[0]
+            b = b[0]._get_backers()
+
+    def _get_storage(self):
+        '''
+        Returns the backend store dict that the cooldict uses.
+        '''
+        raise NotImplementedError("%s._get_storage" % self.__class__.__name__)
+
+    def _get_backers(self):
+        '''
+        Returns the backers of the dictionary.
+        '''
+        raise NotImplementedError("%s._get_backers" % self.__class__.__name__)
+
+    def _get_deleted(self): #pylint:disable=no-self-use
+        '''
+        Returns the set of deleted items.
+        '''
+        return set()
+
+class CachedDict(CoolDict):
     ''' Implements a write-through cache around another dict. '''
 
     def __init__(self, backer):
@@ -86,6 +65,12 @@ class CachedDict(ana.Storable, collections.MutableMapping):
         self.cache = { }
 
         self.make_uuid()
+
+    def _get_backers(self):
+        return [ self.backer ]
+
+    def _get_storage(self):
+        return self.cache
 
     def default_cacher(self, k):
         v = self.backer[k]
@@ -110,7 +95,7 @@ class CachedDict(ana.Storable, collections.MutableMapping):
         return self.backer.__iter__()
 
     def __len__(self):
-        return len(list(self.__iter__()))
+        return len(self.backer)
 
     def _ana_getstate(self):
         return self.backer
@@ -119,7 +104,7 @@ class CachedDict(ana.Storable, collections.MutableMapping):
         self.backer = state
         self.cache = { }
 
-class BackedDict(ana.Storable, collections.MutableMapping):
+class BackedDict(CoolDict):
     ''' Implements a mapping that's backed by other mappings. '''
 
     def __init__(self, *backers, **kwargs):
@@ -128,6 +113,15 @@ class BackedDict(ana.Storable, collections.MutableMapping):
         self.deleted = kwargs.get('deleted', set())
 
         self.make_uuid()
+
+    def _get_backers(self):
+        return self.backers
+
+    def _get_deleted(self):
+        return self.deleted
+
+    def _get_storage(self):
+        return self.storage
 
     def __getitem__(self, a):
         # make sure we haven't deleted it
@@ -184,8 +178,8 @@ class BackedDict(ana.Storable, collections.MutableMapping):
                     self.storage[i] = b[i]
             self.backers = [ ]
         else:
-            a_line = list(ancestry_line(self))
-            ancestors = [ get_storage(a) for a in a_line ]
+            a_line = list(self._ancestry_line())
+            ancestors = [ (a._get_storage() if hasattr(a, '_get_storage') else a) for a in a_line  ]
             ancestor_keys = [ set(a.keys()) for a in ancestors ]
             remaining = set()
             new_backers = [ ]
@@ -205,7 +199,7 @@ class BackedDict(ana.Storable, collections.MutableMapping):
             #print "new ancestors:",ancestors
 
             for a in reversed(ancestors):
-                keys = set(get_storage(a).iterkeys())
+                keys = set(a._get_storage().iterkeys()) if hasattr(a, '_get_storage') else set()
                 ancestor_keys.append(keys)
                 remaining |= keys
                 if type(a) is BackedDict:
@@ -233,7 +227,7 @@ class BackedDict(ana.Storable, collections.MutableMapping):
     def _ana_setstate(self, state):
         self.storage, self.deleted, self.backers = state
 
-class FinalizableDict(ana.Storable, collections.MutableMapping):
+class FinalizableDict(CoolDict):
     ''' Implements a finalizable dict. This is meant to support BranchingDict, and offers no guarantee about the actual immutability of the underlying data. It's quite easy to bypass. You've been warned. '''
 
     def __init__(self, storage = None):
@@ -241,6 +235,12 @@ class FinalizableDict(ana.Storable, collections.MutableMapping):
         self.storage = { } if storage is None else storage
 
         self.make_uuid()
+
+    def _get_backers(self):
+        return [ self.storage ]
+
+    def _get_storage(self):
+        return { }
 
     def __getitem__(self, a):
         return self.storage[a]
@@ -272,8 +272,13 @@ class FinalizableDict(ana.Storable, collections.MutableMapping):
         self.storage = state[0]
         self.finalized = True
 
-class BranchingDict(collections.MutableMapping):
-    ''' This implements a branching dictionary. Basically, a BranchingDict can be branch()ed and the two copies will thereafter share a common backer, but will not write back to that backer. Can probably be reimplemented without FinalizableDict. '''
+class BranchingDict(CoolDict):
+    '''
+    This implements a branching dictionary. Basically, a BranchingDict can be
+    branch()ed and the two copies will thereafter share a common backer, but
+    will not write back to that backer. Can probably be reimplemented without
+    FinalizableDict.
+    '''
     def __init__(self, d = None, max_depth = None, min_depth = None):
         max_depth = default_max_depth if max_depth is None else max_depth
         min_depth = default_min_depth if min_depth is None else min_depth
@@ -298,16 +303,19 @@ class BranchingDict(collections.MutableMapping):
         self.max_depth = max_depth
         self.min_depth = min_depth
 
-    # Returns the ancestry of this dict, back to the first dict that we don't recognize
-    # or that has more than one backer.
-    def ancestry_line(self):
-        return ancestry_line(self)
+    def _get_storage(self):
+        return { }
+
+    def _get_backers(self):
+        return [ self.cowdict ]
+
+    ancestry_line = CoolDict._ancestry_line
 
     # Returns the common ancestor between self and other.
     def common_ancestor(self, other):
-        our_line = set([ get_id(a) for a in self.ancestry_line() ])
+        our_line = set([ id(a) for a in self.ancestry_line() ])
         for d in other.ancestry_line():
-            if get_id(d) in our_line:
+            if id(d) in our_line:
                 return d
         return None
 
