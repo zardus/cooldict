@@ -1,4 +1,3 @@
-import sys
 import collections
 import itertools
 
@@ -13,7 +12,7 @@ class FinalizedError(Exception):
 class BranchingDictError(Exception):
     pass
 
-default_max_depth = sys.getrecursionlimit() * 0.2
+default_max_depth = 200
 default_min_depth = 100
 
 # for speed, cause the ABC instancecheck is slow
