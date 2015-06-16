@@ -199,7 +199,7 @@ class BackedDict(CoolDict):
             #print "ancestors:",ancestors
             #print "new ancestors:",ancestors
 
-            for a in reversed(ancestors):
+            for a in reversed(a_line):
                 keys = set(a._get_storage().iterkeys()) if hasattr(a, '_get_storage') else set()
                 ancestor_keys.append(keys)
                 remaining |= keys
