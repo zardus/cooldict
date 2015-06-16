@@ -35,8 +35,10 @@ class CoolDict(ana.Storable, collections.MutableMapping):
         '''
         b = self._get_backers()
 
-        while len(b) == 1 and hasattr(b[0], '_get_backers'):
+        while len(b) == 1:
             yield b[0]
+            if not hasattr(b[0], '_get_backers'):
+                break
             b = b[0]._get_backers()
 
     def _get_storage(self):
@@ -272,6 +274,68 @@ class FinalizableDict(CoolDict):
         self.storage = state[0]
         self.finalized = True
 
+class COWDict(CoolDict):
+    '''
+    This implements a copy-on-write dictionary. A COWDict can be branch()ed and
+    the two copies will thereafter share a common backer for reads. Writes will
+    result in the backer being copied, and the copy being used instead.  Can
+    probably be reimplemented without FinalizableDict.
+    '''
+
+    def __init__(self, cowdict=None):
+        self._cowdict = { } if cowdict is None else cowdict
+        self._cowed = False
+
+    def _get_backers(self):
+        return [ self._cowdict ]
+
+    def _get_storage(self):
+        return self._cowdict
+
+    def _cow(self):
+        if self._cowed:
+            return
+        else:
+            self._cowed = True
+            self._cowdict = dict(self._cowdict)
+
+    def __delitem__(self, k):
+        self._cow()
+        return self._cowdict.__delitem__(k)
+
+    def __getitem__(self, k):
+        return self._cowdict.__getitem__(k)
+
+    def __setitem__(self, k, v):
+        self._cow()
+        return self._cowdict.__setitem__(k, v)
+
+    def __iter__(self):
+        return iter(self._cowdict)
+
+    def __len__(self):
+        return len(self._cowdict)
+
+    def branch(self):
+        self._cowed = False
+        return COWDict(cowdict=self._cowdict)
+
+    def common_ancestor(self, o):
+        if self._cowdict is o._cowdict:
+            return self._cowdict
+        else:
+            return None
+
+    def changes_since(self, ancestor):
+        if ancestor is self._cowdict:
+            return set(), set()
+        elif ancestor is None:
+            return set(self.keys()), set()
+        else:
+            return set(ancestor.keys()) | set(self.keys()), set()
+
+    ancestry_line = CoolDict._ancestry_line
+
 class BranchingDict(CoolDict):
     '''
     This implements a branching dictionary. Basically, a BranchingDict can be
@@ -409,6 +473,62 @@ def test():
 
     del b3[a]
     assert len(b3) == 3
+
+    l.info("Testing COWDict functionality.")
+    d1 = COWDict(b3)
+    d2 = d1.branch()
+    d3 = d2.branch()
+
+    d1[d] = d
+    assert len(b3) == 3
+    assert len(d1) == 4
+    assert len(d2) == 3
+    assert len(d3) == 3
+    assert d1[d] == d
+    assert d1[b] == 'b'
+    assert d1[one] == 1
+
+    d3[b] = "omg"
+    assert d3[b] == "omg"
+    assert d2[b] == 'b'
+
+    d4 = d3.branch()
+    del d4[b]
+    del d4[c]
+
+    d5 = d4.branch()
+    d5['hmm'] = 5
+    d6 = d5.branch()
+
+    l.info("Testing COWDict ancestry and flattening.")
+    assert len(list(d5.ancestry_line())) == 1
+    dnew = d5.branch()
+    dnew['ohsnap'] = 1
+    for _ in range(50):
+        dnew = dnew.branch()
+        dnew['ohsnap'] += 1
+    assert len(list(dnew.ancestry_line())) == 1
+
+    for _ in range(2000):
+        #print "Branching dict number", _
+        dnew = dnew.branch()
+        dnew['ohsnap'] += 1
+    assert len(list(dnew.ancestry_line())) == 1
+
+    common = d4.common_ancestor(d2)
+    changed, deleted = d4.changes_since(common)
+    assert len(changed) == len(d4)
+    assert len(deleted) == 0
+
+    changed, deleted = d6.changes_since(common)
+    assert len(changed) == len(d6)
+    assert len(deleted) == 0
+
+    d7 = d6.branch()
+    common = d7.common_ancestor(d7)
+    changed, deleted = d6.changes_since(common)
+    assert len(changed) == 0
+    assert len(deleted) == 0
 
     l.info("Testing BranchingDict functionality.")
     d1 = BranchingDict(b3)
