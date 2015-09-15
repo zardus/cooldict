@@ -5,6 +5,7 @@ import ana
 
 import logging
 l = logging.getLogger("cooldict")
+l.addHandler(logging.NullHandler())
 
 class FinalizedError(Exception):
     pass
