@@ -278,8 +278,7 @@ class COWDict(CoolDict):
     '''
     This implements a copy-on-write dictionary. A COWDict can be branch()ed and
     the two copies will thereafter share a common backer for reads. Writes will
-    result in the backer being copied, and the copy being used instead.  Can
-    probably be reimplemented without FinalizableDict.
+    result in the backer being copied, and the copy being used instead.
     '''
 
     def __init__(self, cowdict=None):
