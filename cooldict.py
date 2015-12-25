@@ -499,6 +499,13 @@ def test():
     d5['hmm'] = 5
     d6 = d5.branch()
 
+    da = COWDict()
+    da[1] = 'one'
+    db = da.branch()
+    db.clear()
+    assert len(db.items()) == 0
+    assert len(da.items()) == 1
+
     l.info("Testing COWDict ancestry and flattening.")
     assert len(list(d5.ancestry_line())) == 1
     dnew = d5.branch()
