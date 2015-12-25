@@ -315,6 +315,10 @@ class COWDict(CoolDict):
     def __len__(self):
         return len(self._cowdict)
 
+    def clear(self):
+        self._cow()
+        return self._cowdict.clear()
+
     def branch(self):
         self._cowed = False
         return COWDict(cowdict=self._cowdict)
@@ -334,6 +338,36 @@ class COWDict(CoolDict):
             return set(ancestor.keys()) | set(self.keys()), set()
 
     ancestry_line = CoolDict._ancestry_line
+
+class SinkholeCOWDict(COWDict):
+    '''
+    This extends COWDict with a "sinkholing" capability. A single
+    value can be set that is returned by __missing__.
+    '''
+
+    def __init__(self, sinkholed=False, sinkhole_value=None, *args, **kwargs):
+        COWDict.__init__(self, *args, **kwargs)
+        self._sinkholed = sinkholed
+        self._sinkhole_value = sinkhole_value
+
+    def branch(self):
+        self._cowed = False
+        return SinkholeCOWDict(sinkholed=self._sinkholed, sinkhole_value=self._sinkhole_value, cowdict=self._cowdict)
+
+    def __getitem__(self, k):
+        try:
+            return COWDict.__getitem__(self, k)
+        except KeyError:
+            if self._sinkholed:
+                return self._sinkhole_value
+            else:
+                raise
+
+    def sinkhole(self, v):
+        self._cow()
+        self.clear()
+        self._sinkholed=True
+        self._sinkhole_value = v
 
 class BranchingDict(CoolDict):
     '''
@@ -535,6 +569,25 @@ def test():
     changed, deleted = d6.changes_since(common)
     assert len(changed) == 0
     assert len(deleted) == 0
+
+    l.info("Testing SinkholeCOWDict")
+    da = SinkholeCOWDict()
+    try:
+        print da[10]
+        assert False
+    except KeyError:
+        pass
+
+    da.sinkhole(10)
+    assert da[10] == 10
+    assert da[11] == 10
+    assert da['asdf'] == 10
+    db = da.branch()
+    assert da['asdf'] == 10
+    assert db['fdsa'] == 10
+    db.sinkhole(20)
+    assert da['asdf'] == 10
+    assert db['fdsa'] == 20
 
     l.info("Testing BranchingDict functionality.")
     d1 = BranchingDict(b3)
