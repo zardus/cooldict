@@ -363,9 +363,10 @@ class SinkholeCOWDict(COWDict):
             else:
                 raise
 
-    def sinkhole(self, v):
+    def sinkhole(self, v, wipe=True):
         self._cow()
-        self.clear()
+        if wipe:
+            self.clear()
         self._sinkholed=True
         self._sinkhole_value = v
 
