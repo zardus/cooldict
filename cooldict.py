@@ -220,7 +220,7 @@ class BackedDict(CoolDict):
                 remaining -= keys
 
             if len(remaining) != 0:
-                raise Exception("%d items remaining after flatten!", len(remaining))
+                raise Exception("%d items remaining after flatten!" % len(remaining))
             self.backers = new_backers
 
     def _ana_getstate(self):
