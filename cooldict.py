@@ -187,18 +187,18 @@ class BackedDict(CoolDict):
             new_backers = [ ]
 
             try:
-                #print "Checking for ignores"
+                #print("Checking for ignores")
                 ignored_idx = [ getattr(a, 'cooldict_ignore', False) for a in a_line ].index(True)
-                #print "... found at",ignored_idx
+                #print("... found at",ignored_idx)
                 new_backers = [ a_line[ignored_idx] ]
                 ancestors = ancestors[:ignored_idx]
                 ancestor_keys = ancestor_keys[:ignored_idx]
             except ValueError:
-                #print "... not found"
+                #print("... not found")
                 pass
 
-            #print "ancestors:",ancestors
-            #print "new ancestors:",ancestors
+            #print("ancestors:",ancestors)
+            #print("new ancestors:",ancestors)
 
             for a in reversed(a_line):
                 keys = set(a._get_storage().iterkeys()) if hasattr(a, '_get_storage') else set()
@@ -551,7 +551,7 @@ def test():
     assert len(list(dnew.ancestry_line())) == 1
 
     for _ in range(2000):
-        #print "Branching dict number", _
+        #print("Branching dict number", _)
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
     assert len(list(dnew.ancestry_line())) == 1
@@ -574,7 +574,7 @@ def test():
     l.info("Testing SinkholeCOWDict")
     da = SinkholeCOWDict()
     try:
-        print da[10]
+        print(da[10])
         assert False
     except KeyError:
         pass
@@ -630,7 +630,7 @@ def test():
     assert len(list(dnew.ancestry_line())) == 56
 
     for _ in range(2000):
-        #print "Branching dict number", _
+        #print("Branching dict number", _)
         dnew = dnew.branch()
         dnew['ohsnap'] += 1
     assert len(list(dnew.ancestry_line())) == 156
