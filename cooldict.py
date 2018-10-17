@@ -202,13 +202,13 @@ class BackedDict(CoolDict):
             #print("new ancestors:",ancestors)
 
             for a in reversed(a_line):
-                keys = set(a._get_storage().iterkeys()) if hasattr(a, '_get_storage') else set()
+                keys = set(a._get_storage().keys()) if hasattr(a, '_get_storage') else set()
                 ancestor_keys.append(keys)
                 remaining |= keys
                 if type(a) is BackedDict:
                     remaining -= a.deleted
 
-            remaining -= set(self.storage.iterkeys())
+            remaining -= set(self.storage.keys())
             remaining -= self.deleted
 
             for a,keys in zip(ancestors, ancestor_keys):
