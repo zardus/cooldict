@@ -2,8 +2,6 @@ from __future__ import print_function
 import collections
 import itertools
 
-import ana
-
 import logging
 l = logging.getLogger("cooldict")
 l.addHandler(logging.NullHandler())
@@ -24,7 +22,7 @@ default_min_depth = 100
 ### The dicts themselves ###
 ############################
 
-class CoolDict(ana.Storable, collections.MutableMapping):
+class CoolDict(collections.MutableMapping):
     '''
     The base dict class for CoolDict.
     '''
