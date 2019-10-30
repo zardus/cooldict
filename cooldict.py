@@ -4,6 +4,7 @@ import logging
 import pickle
 
 l = logging.getLogger("cooldict")
+l.addHandler(logging.NullHandler())
 
 class FinalizedError(Exception):
     pass
@@ -668,5 +669,4 @@ def test():
     assert pb1[2] == '2'
 
 if __name__ == "__main__":
-    l.addHandler(logging.NullHandler())
     test()
