@@ -1,8 +1,8 @@
-from __future__ import print_function
 import collections
 import itertools
-
 import logging
+import pickle
+
 l = logging.getLogger("cooldict")
 l.addHandler(logging.NullHandler())
 
@@ -65,8 +65,6 @@ class CachedDict(CoolDict):
         self.backer = backer
         self.cache = { }
 
-        self.make_uuid()
-
     def _get_backers(self):
         return [ self.backer ]
 
@@ -98,11 +96,11 @@ class CachedDict(CoolDict):
     def __len__(self):
         return len(self.backer)
 
-    def _ana_getstate(self):
-        return self.backer
+    def __getstate__(self):
+        return self.backer,
 
-    def _ana_setstate(self, state):
-        self.backer = state
+    def __setstate__(self, state):
+        self.backer = state[0]
         self.cache = { }
 
 class BackedDict(CoolDict):
@@ -112,8 +110,6 @@ class BackedDict(CoolDict):
         self.backers = backers
         self.storage = kwargs.get('storage', { })
         self.deleted = kwargs.get('deleted', set())
-
-        self.make_uuid()
 
     def _get_backers(self):
         return self.backers
@@ -222,10 +218,10 @@ class BackedDict(CoolDict):
                 raise Exception("%d items remaining after flatten!" % len(remaining))
             self.backers = new_backers
 
-    def _ana_getstate(self):
+    def __getstate__(self):
         return self.storage, self.deleted, self.backers
 
-    def _ana_setstate(self, state):
+    def __setstate__(self, state):
         self.storage, self.deleted, self.backers = state
 
 class FinalizableDict(CoolDict):
@@ -234,8 +230,6 @@ class FinalizableDict(CoolDict):
     def __init__(self, storage = None):
         self.finalized = False
         self.storage = { } if storage is None else storage
-
-        self.make_uuid()
 
     def _get_backers(self):
         return [ self.storage ]
@@ -265,11 +259,11 @@ class FinalizableDict(CoolDict):
     def finalize(self):
         self.finalized = True
 
-    def _ana_getstate(self):
+    def __getstate__(self):
         self.finalize()
-        return (self.storage,)
+        return self.storage,
 
-    def _ana_setstate(self, state):
+    def __setstate__(self, state):
         self.storage = state[0]
         self.finalized = True
 
@@ -460,8 +454,6 @@ class BranchingDict(CoolDict):
         return BranchingDict(self.cowdict, max_depth=self.max_depth, min_depth=self.min_depth)
 
 def test():
-    import pickle
-
     try:
         import standard_logging # pylint: disable=W0612,
     except ImportError:
@@ -668,35 +660,13 @@ def test():
 
     l.info("Testing pickling.")
     pb1 = BackedDict({1: '1', 2: '2', 3: '3'})
-    pb1_id = pb1.ana_store()
+    pb1_id = pickle.dumps(pb1)
 
     del pb1
-    pb1 = BackedDict.ana_load(pb1_id)
-    assert pb1.ana_uuid == pb1_id
+    pb1 = pickle.loads(pb1_id)
     assert len(pb1) == 3
     assert len(pb1.storage) == 0
     assert pb1[2] == '2'
-
-    pb1a = BackedDict.ana_load(pb1_id)
-    assert pb1 is pb1a
-    del pb1a
-
-    pb2 = BackedDict(pb1, {'a': 1, 'b': 2})
-    pb2s = pickle.dumps(pb2, -1)
-    del pb2
-    pb2 = pickle.loads(pb2s)
-    assert pb1 is pb2.backers[0]
-
-    bb1 = BranchingDict(pb2)
-    bb2 = bb1.branch()
-    bb1[4] = '4'
-
-    assert bb1.common_ancestor(bb2) == pb2
-    bb1s = pickle.dumps(bb1, -1)
-    del bb1
-    bb1 = pickle.loads(bb1s)
-
-    assert bb1.common_ancestor(bb2) == pb2
 
 if __name__ == "__main__":
     test()
