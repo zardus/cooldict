@@ -1,4 +1,9 @@
 import collections
+import sys
+# check for python 3.10 or above 
+if sys.version_info.major == 3 and sys.version_info.minor >= 10:
+    # add the attribute mutable mapping to collections
+    setattr(collections, "MutableMapping", collections.abc.MutableMapping)
 import itertools
 import logging
 import pickle
